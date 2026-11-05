@@ -1,0 +1,148 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Session {
+  id                  String    @id
+  shop                String
+  state               String
+  isOnline            Boolean   @default(false)
+  scope               String?
+  expires             DateTime?
+  accessToken         String
+  userId              BigInt?
+  firstName           String?
+  lastName            String?
+  email               String?
+  accountOwner        Boolean   @default(false)
+  locale              String?
+  collaborator        Boolean?  @default(false)
+  emailVerified       Boolean?  @default(false)
+  refreshToken        String?
+  refreshTokenExpires DateTime?
+}
+
+// Every business table carries shopId and every query filters by it.
+
+model ShopSettings {
+  shopId      String   @id @map("shop_id")
+  voice       String   @default("Friendly, clear and concrete. Short sentences.")
+  audience    String   @default("")
+  bannedWords String[] @default([])
+  language    String   @default("en")
+  updatedAt   DateTime @updatedAt
+
+  @@map("shop_settings")
+}
+
+model Product {
+  id              String   @id @default(cuid())
+  shopId          String   @map("shop_id")
+  productGid      String   @map("product_gid")
+  title           String
+  handle          String
+  vendor          String   @default("")
+  productType     String   @default("") @map("product_type")
+  tags            String[] @default([])
+  options         Json     @default("[]")
+  descriptionHtml String   @default("") @map("description_html")
+  seoTitle        String?  @map("seo_title")
+  seoDescription  String?  @map("seo_description")
+  images          Json     @default("[]") // [{ id, url, alt }]
+  score           Int      @default(0) // 0..100 completeness
+  missing         String[] @default([])
+  scannedAt       DateTime @map("scanned_at")
+
+  @@unique([shopId, productGid])
+  @@index([shopId, score])
+  @@map("products")
+}
+
+model ScanJob {
+  id              String    @id @default(cuid())
+  shopId          String    @map("shop_id")
+  bulkOperationId String?   @map("bulk_operation_id")
+  status          String    @default("running") // running | ingesting | completed | failed
+  objectCount     Int       @default(0) @map("object_count")
+  productCount    Int       @default(0) @map("product_count")
+  error           String?
+  startedAt       DateTime  @default(now()) @map("started_at")
+  finishedAt      DateTime? @map("finished_at")
+
+  @@index([shopId, startedAt])
+  @@map("scan_jobs")
+}
+
+model Suggestion {
+  id            String    @id @default(cuid())
+  shopId        String    @map("shop_id")
+  productGid    String    @map("product_gid")
+  status        String    @default("pending") // pending | approved | rejected | applied | failed | reverted
+  fields        Json // { descriptionHtml, seoTitle, seoDescription, imageAlts: [{ imageId, alt }] }
+  missingInfo   String[]  @default([]) @map("missing_info")
+  warnings      Json      @default("[]") // [{ field, code, message, blocking }]
+  promptVersion String    @map("prompt_version")
+  error         String?
+  reviewedBy    String?   @map("reviewed_by")
+  reviewedAt    DateTime? @map("reviewed_at")
+  createdAt     DateTime  @default(now()) @map("created_at")
+
+  @@index([shopId, status])
+  @@map("suggestions")
+}
+
+// Durable job queue: survives reloads and restarts; progress is read from here.
+model Job {
+  id         String   @id @default(cuid())
+  shopId     String   @map("shop_id")
+  kind       String // generate | apply | revert
+  refId      String   @map("ref_id") // productGid for generate, suggestionId for apply, versionId for revert
+  status     String   @default("queued") // queued | running | done | failed
+  attempts   Int      @default(0)
+  nextRunAt  DateTime @default(now()) @map("next_run_at")
+  lastError  String?  @map("last_error")
+  batchId    String?  @map("batch_id")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  @@index([status, nextRunAt])
+  @@index([shopId, batchId])
+  @@map("jobs")
+}
+
+model ProductVersion {
+  id           String    @id @default(cuid())
+  shopId       String    @map("shop_id")
+  productGid   String    @map("product_gid")
+  suggestionId String    @map("suggestion_id")
+  before       Json
+  after        Json
+  createdAt    DateTime  @default(now()) @map("created_at")
+  revertedAt   DateTime? @map("reverted_at")
+
+  @@index([shopId, productGid])
+  @@map("product_versions")
+}
+
+model AiCall {
+  id            String   @id @default(cuid())
+  shopId        String   @map("shop_id")
+  promptId      String   @map("prompt_id")
+  promptVersion String   @map("prompt_version")
+  model         String
+  mode          String // live | mock
+  inputTokens   Int      @map("input_tokens")
+  outputTokens  Int      @map("output_tokens")
+  costUsd       Float    @map("cost_usd")
+  latencyMs     Int      @map("latency_ms")
+  error         String?
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  @@index([shopId, createdAt])
+  @@map("ai_calls")
+}

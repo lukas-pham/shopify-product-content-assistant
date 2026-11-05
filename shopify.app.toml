@@ -1,0 +1,24 @@
+# Product Content Assistant — configuration
+client_id = ""
+name = "Product Content Assistant"
+
+[access_scopes]
+# read/write_products: scan catalog, write description + SEO (productUpdate)
+# write_files: image alt text via fileUpdate (verified against Admin API 2026-10 docs)
+scopes = "read_products,write_products,write_files"
+
+[webhooks]
+api_version = "2026-10"
+
+  [[webhooks.subscriptions]]
+  uri = "/webhooks/app/uninstalled"
+  topics = ["app/uninstalled"]
+
+  [[webhooks.subscriptions]]
+  topics = [ "app/scopes_update" ]
+  uri = "/webhooks/app/scopes_update"
+
+  # Mandatory privacy webhooks (public apps)
+  [[webhooks.subscriptions]]
+  uri = "/webhooks/compliance"
+  compliance_topics = ["customers/data_request", "customers/redact", "shop/redact"]
